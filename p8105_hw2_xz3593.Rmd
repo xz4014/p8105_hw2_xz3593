@@ -7,14 +7,283 @@ output: github_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
 ```
 
 ##Problem 1
+```{r import-subway}
+subway_raw = read_csv("Data/NYC_Transit_Subway_Entrance_And_Exit_Data.csv")
+
+dim(subway_raw)
+
+```
+```{r clean-subway}
+subway_df = subway_raw |>
+  janitor::clean_names() |>
+  select(
+    line,
+    station_name,
+    station_latitude,
+    station_longitude,
+    route1:route11,
+    entry,
+    vending,
+    entrance_type,
+    ada
+  )
 
 
+dim(subway_df)
+```
+```{r convert-entry}
+subway_df = subway_df |>
+  mutate(entry = entry == "YES")
 
+class(subway_df$entry)
+```
+
+This dataset contains information about NYC subway entrances and exits. The retained variables include line, station name, station latitude and longitude, routes served, entry permission, vending availability, entrance type, ADA compliance. I cleaned the column names, selected the required variables, and converted entry from “YES” and “NO” to TRUE and FALSE. The resulting dataset has 1,868 rows and 19 columns, with each row representing an entrance or exit. The data are not tidy because route information is spread across 11 columns, route 1 through route11. It not stored in a single column.
+
+```{r count-stations}
+station_count = subway_df |>
+  distinct(line, station_name) |>
+  nrow()
+
+station_count
+```
+
+There are 465 distinct stations, identified by the combination of line and station name.
+
+```{r count-ada-stations}
+ada_station_count = subway_df |>
+  filter(ada == TRUE) |>
+  distinct(line, station_name) |>
+  nrow()
+
+ada_station_count
+```
+
+Of the 465 distinct stations, 84 are ADA compliant.
+
+```{r entry-without-vending}
+no_vending_summary = subway_df |>
+  filter(vending == "NO") |>
+  summarise(
+    total_no_vending = n(),
+    allowed_entry = sum(entry),
+    proportion = allowed_entry / total_no_vending
+  )
+
+no_vending_summary
+```
+
+Among the 183 entrances and exits without vending, 69 allow entry. The proportion is 69/183, or approximately 37.70%.
+
+```{r reshape-routes}
+subway_long = subway_df |>
+  mutate(across(route1:route11, as.character)) |>
+  pivot_longer(
+    cols = route1:route11,
+    names_to = "route_number",
+    names_prefix = "route",
+    values_to = "route_name",
+    values_drop_na = TRUE
+  ) |>
+  mutate(route_number = as.integer(route_number))
+
+dim(subway_long)
+```
+
+```{r count-a-stations}
+a_station_count = subway_long |>
+  filter(route_name == "A") |>
+  distinct(line, station_name) |>
+  nrow()
+
+a_station_count
+```
+There are 60 distinct stations that serve the A train.
+
+```{r count-a-ada-stations}
+a_ada_station_count = subway_long |>
+  filter(route_name == "A", ada == TRUE) |>
+  distinct(line, station_name) |>
+  nrow()
+
+a_ada_station_count
+```
+Of the 60 distinct stations that serve the A train, 17 are ADA compliant.
 
 ##Problem2
 
+```{r clean-mr-trash-wheel}
+mr_trash_df = readxl::read_excel("Data/202610 Trash Wheel Collection Data.xlsx",
+  sheet = "Mr. Trash Wheel",
+  range = "A2:N742"
+) |>
+  janitor::clean_names() |>
+  filter(!is.na(dumpster)) |>
+  mutate(
+    sports_balls = as.integer(round(sports_balls)),
+    year = as.integer(year),
+    trash_wheel = "Mr. Trash Wheel"
+  )
+
+dim(mr_trash_df)
+```
+
+```{r clean-professor-trash-wheel}
+professor_trash_df = readxl::read_excel("Data/202610 Trash Wheel Collection Data.xlsx",
+  sheet = "Professor Trash Wheel",
+  range = "A2:M139",
+  na = c("", "dive")
+) |>
+  janitor::clean_names() |>
+  filter(!is.na(dumpster)) |>
+  mutate(
+    year = as.integer(year),
+    trash_wheel = "Professor Trash Wheel"
+  )
+
+dim(professor_trash_df)
+```
+
+```{r clean-gwynnda}
+gwynnda_df = readxl::read_excel("Data/202610 Trash Wheel Collection Data.xlsx",
+  sheet = "Gwynnda the Good Wheel of the W",
+  range = "A2:L394"
+) |>
+  janitor::clean_names() |>
+  filter(!is.na(dumpster)) |>
+  mutate(
+    year = as.integer(year),
+    trash_wheel = "Gwynnda"
+  )
+
+dim(gwynnda_df)
+```
+
+```{r combine-trash-wheels}
+trash_wheel_df = bind_rows(
+  mr_trash_df,
+  professor_trash_df,
+  gwynnda_df
+)
+
+dim(trash_wheel_df)
+
+trash_wheel_df |>
+  count(trash_wheel)
+```
+
+```{r professor-total-weight}
+professor_total_weight = trash_wheel_df |>
+  filter(trash_wheel == "Professor Trash Wheel") |>
+  summarise(total_weight = sum(weight_tons, na.rm = TRUE)) |>
+  pull(total_weight)
+
+professor_total_weight
+```
+
+```{r gwynnda-cigarette-butts}
+gwynnda_june_2022_butts = trash_wheel_df |>
+  filter(
+    trash_wheel == "Gwynnda",
+    year == 2022,
+    month == "June"
+  ) |>
+  summarise(total_butts = sum(cigarette_butts, na.rm = TRUE)) |>
+  pull(total_butts)
+
+gwynnda_june_2022_butts
+```
+
+This dataset combines data from Mr. Trash Wheel, Professor Trash Wheel, and Gwynnda. It has r nrow(trash_wheel_df) rows and r ncol(trash_wheel_df) columns. Each row is a record of one dumpster collection. The variables include the date, trash weight and volume, counts of items such as plastic bottles and cigarette butts, the trash wheel name. I removed non-data entries, cleaned the column names, and rounded the sports ball counts to integers. I also treated “dive” in the plastic bottle column as a missing value. The combined data are tidy because each row represents one observation and each column represents one variable. Professor Trash Wheel collected r professor_total_weight tons of trash in total. Gwynnda collected r gwynnda_june_2022_butts cigarette butts in June 2022.
 
 ##Problem3
+
+```{r import-mci-baseline}
+baseline_raw = read_csv("Data/data_mci/MCI_baseline.csv",
+  skip = 1,
+  na = c("", "NA", ".")
+) |>
+  janitor::clean_names()
+dim(baseline_raw)
+```
+```{r clean-mci-baseline}
+baseline_df = baseline_raw |>
+  rename(
+    baseline_age = current_age,
+    mci_age = age_at_onset
+  ) |>
+  mutate(
+    sex = factor(
+      sex,
+      levels = c(0, 1),
+      labels = c("Female", "Male")
+    ),
+    apoe4 = factor(
+      apoe4,
+      levels = c(0, 1),
+      labels = c("Non-carrier", "Carrier")
+    )
+  ) |>
+  filter(is.na(mci_age) | mci_age > baseline_age)
+
+dim(baseline_df)
+```
+```{r summarize-mci-baseline}
+baseline_summary = baseline_df |>
+  summarise(
+    participants = n(),
+    developed_mci = sum(!is.na(mci_age)),
+    mean_baseline_age = mean(baseline_age)
+  )
+
+baseline_summary
+
+baseline_summary$mean_baseline_age
+```
+```{r women-apoe4}
+women_apoe4_summary = baseline_df |>
+  filter(sex == "Female") |>
+  summarise(
+    total_women = n(),
+    carriers = sum(apoe4 == "Carrier"),
+    proportion = carriers / total_women
+  )
+
+women_apoe4_summary
+```
+
+The baseline dataset contains information on 483 recruited participants, including their ID, baseline age, sex, years of education, APOE4 status, and age at MCI onset. I skip the first row of variable descriptions, clean the column names, and treated “.” as a missing value. I converted sex and APOE4 status to factors with descriptive labels. I also removed 4 participants whose MCI onset age was at or before their baseline age. This left 479 participants and 6 variables, with one participant per row. Among these participants, 93 developed MCI during follow-up. The average baseline age was about 65.03 years. In the 210 women, 63 were APOE4 carriers, giving a proportion of 30%.
+
+```{r import-amyloid}
+amyloid_raw = read_csv("Data/data_mci/mci_amyloid.csv",
+  skip = 1,
+  na = c("", "NA","Na" ,".")
+) |>
+  janitor::clean_names()
+
+dim(amyloid_raw)
+```
+```{r tidy-amyloid}
+amyloid_df = amyloid_raw |>
+  rename(
+    id = study_id,
+    time_0 = baseline
+  ) |>
+  pivot_longer(
+    cols = time_0:time_8,
+    names_to = "time",
+    names_prefix = "time_",
+    names_transform = list(time = as.integer),
+    values_to = "amyloid_ratio"
+  )
+
+dim(amyloid_df)
+
+head(amyloid_df)
+```
+
+The amyloid dataset contains data for 487 participants at baseline and at years 2, 4, 6, and 8. I skip the first row of descriptions, cleaned the column names, and treated both “NA” and “Na” as missing values. I renamed the participant ID column to match the baseline dataset and reshaped the data from wide to long format. The tidy dataset has 2,435 rows and 3 columns: participant ID, time in years, and the amyloid β42/40 ratio. Each row represents one participant at one time point. Missing measurements were kept as NA.
